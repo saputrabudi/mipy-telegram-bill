@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MIPY</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body {
+            padding-top: 20px;
+            padding-bottom: 20px;
+        }
+        .header {
+            padding-bottom: 20px;
+            border-bottom: 1px solid #e5e5e5;
+            margin-bottom: 30px;
+        }
+        .form-group {
+            margin-bottom: 15px;
+        }
+        .btn-test {
+            width: 100%;
+            margin-top: 5px;
+        }
+        .debug-info {
+            background-color: #f8f9fa;
+            border-radius: 5px;
+            padding: 10px;
+            margin-top: 15px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header text-center">
+            <h1>MikroTik Hotspot Voucher Generator with Telegram</h1>
+            <p class="lead">Supported by Saputra Budi</p>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h4>Konfigurasi MikroTik</h4>
+                    </div>
+                    <div class="card-body">
+                        <form action="/save_config" method="post">
+                            <div class="form-group">
+                                <label for="IP_MIKROTIK">IP MikroTik:</label>
+                                <input type="text" class="form-control" id="IP_MIKROTIK" name="IP_MIKROTIK" value="{{ config.IP_MIKROTIK }}" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="PORT_API_MIKROTIK">Port API MikroTik:</label>
+                                <input type="text" class="form-control" id="PORT_API_MIKROTIK" name="PORT_API_MIKROTIK" value="{{ config.PORT_API_MIKROTIK }}" required>
+                                <small class="form-text text-muted">Default: 8728 untuk API, 8729 untuk API-SSL</small>
+                            </div>
+                            <div class="form-group">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="USE_SSL" name="USE_SSL" {% if config.USE_SSL %}checked{% endif %}>
+                                    <label class="form-check-label" for="USE_SSL">Gunakan SSL untuk koneksi API</label>
+                                </div>
+                                <small class="form-text text-muted">Aktifkan jika MikroTik menggunakan API-SSL</small>
+                            </div>
+                            <div class="form-group">
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input" type="checkbox" id="VERIFY_SSL" name="VERIFY_SSL" {% if config.VERIFY_SSL %}checked{% endif %}>
+                                    <label class="form-check-label" for="VERIFY_SSL">Verifikasi sertifikat SSL</label>
+                                </div>
+                                <small class="form-text text-muted">Matikan jika menggunakan self-signed certificates</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="USERNAME_MIKROTIK">Username MikroTik:</label>
+                                <input type="text" class="form-control" id="USERNAME_MIKROTIK" name="USERNAME_MIKROTIK" value="{{ config.USERNAME_MIKROTIK }}" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="PASSWORD_MIKROTIK">Password MikroTik:</label>
+                                <input type="password" class="form-control" id="PASSWORD_MIKROTIK" name="PASSWORD_MIKROTIK" value="{{ config.PASSWORD_MIKROTIK }}" required>
+                            </div>
+                            <button type="button" id="test-mikrotik" class="btn btn-info btn-test">Test Koneksi MikroTik</button>
+                            <div id="mikrotik-result" class="mt-2"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h4>Konfigurasi Telegram</h4>
+                    </div>
+                    <div class="card-body">
+                            <div class="form-group">
+                                <label for="TELEGRAM_TOKEN">Token Bot Telegram:</label>
+                                <div class="input-group mb-2">
+                                    <input type="text" class="form-control" id="TELEGRAM_TOKEN" name="TELEGRAM_TOKEN" value="{{ config.TELEGRAM_TOKEN }}" required>
+                                    <button class="btn btn-outline-secondary" type="button" id="toggle-token">
+                                        <i class="bi bi-eye"></i> Tampilkan
+                                    </button>
+                                </div>
+                                <small class="form-text text-muted">Dapatkan token dari @BotFather di Telegram</small>
+                            </div>
+                            <div class="form-group">
+                                <label for="TELEGRAM_CHAT_ID">Chat ID Telegram:</label>
+                                <input type="text" class="form-control" id="TELEGRAM_CHAT_ID" name="TELEGRAM_CHAT_ID" value="{{ config.TELEGRAM_CHAT_ID }}" required>
+                                <small class="form-text text-muted">Dapatkan Chat ID dengan mengirim pesan ke @userinfobot</small>
+                            </div>
+                            <button type="button" id="test-telegram" class="btn btn-info btn-test">Test Koneksi Telegram</button>
+                            <div id="telegram-result" class="mt-2"></div>
+                            <hr>
+                            <button type="submit" class="btn btn-primary btn-lg w-100 mt-3">Simpan Konfigurasi</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row">
+            <div class="col-md-12">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                            <li class="nav-item">
+                                <a class="nav-link active" data-bs-toggle="tab" href="#harga">Konfigurasi Harga</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" href="#reseller">Manajemen Reseller</a>
+                            </li>
+                            <li class="nav-item">
+                                <a class="nav-link" data-bs-toggle="tab" href="#panduan">Petunjuk Penggunaan</a>
+                            </li>
+                        </ul>
+                    </div>
+                    <div class="card-body">
+                        <div class="tab-content">
+                            <div class="tab-pane fade show active" id="harga">
+                                <h5>Konfigurasi Harga Profil Hotspot</h5>
+                                <div class="mb-3">
+                                    <button type="button" class="btn btn-info" id="syncMikrotik">
+                                        <i class="bi bi-arrow-repeat"></i> Sinkronkan dengan Mikrotik
+                                    </button>
+                                    <small class="form-text text-muted d-block">Klik untuk mengambil daftar profil dari Mikrotik</small>
+                                </div>
+                                <form id="profilePriceForm" action="/save_profile_prices" method="post">
+                                    <div class="table-responsive">
+                                        <table class="table table-bordered">
+                                            <thead>
+                                                <tr>
+                                                    <th>Nama Profil</th>
+                                                    <th>Harga (Rp)</th>
+                                                    <th>Durasi</th>
+                                                    <th>Kuota</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="profilePriceTableBody">
+                                                <!-- Akan diisi secara dinamis -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <button type="submit" class="btn btn-primary mb-3" id="saveProfilePrices">
+                                        <i class="bi bi-save"></i> Simpan Konfigurasi Harga
+                                    </button>
+                                </form>
+                            </div>
+                            
+                            <div class="tab-pane fade" id="reseller">
+                                <h5>Manajemen Reseller</h5>
+                                <div class="mb-3">
+                                    <button type="button" class="btn btn-info" id="testResellerConnection">
+                                        <i class="bi bi-check-circle"></i> Test Koneksi Reseller
+                                    </button>
+                                    <small class="form-text text-muted d-block">Klik untuk menguji koneksi ke reseller</small>
+                                    <div id="reseller-connection-result" class="mt-2"></div>
+                                </div>
+                                <form id="resellerForm" action="/save_reseller" method="post">
+                                    <div class="table-responsive">
+                                        <table class="table table-bordered">
+                                            <thead>
+                                                <tr>
+                                                    <th>Chat ID</th>
+                                                    <th>Nama</th>
+                                                    <th>Saldo (Rp)</th>
+                                                    <th>Status</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="resellerTableBody">
+                                                <!-- Akan diisi secara dinamis -->
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <button type="button" class="btn btn-success" id="addReseller">
+                                        <i class="bi bi-plus"></i> Tambah Reseller
+                                    </button>
+                                    <button type="submit" class="btn btn-primary">
+                                        Simpan Data Reseller
+                                    </button>
+                                </form>
+                            </div>
+                            
+                            <div class="tab-pane fade" id="panduan">
+                                <h5>Langkah-langkah:</h5>
+                                <ol>
+                                    <li>Isi konfigurasi MikroTik dan Telegram di atas</li>
+                                    <li>Tekan tombol "Test Koneksi" untuk memastikan koneksi berfungsi</li>
+                                    <li>Simpan konfigurasi</li>
+                                    <li>Jalankan bot Telegram dengan perintah <code>python telegram_bot.py</code></li>
+                                    <li>Mulai chat dengan bot Telegram Anda</li>
+                                    <li>Gunakan perintah /voucher untuk membuat voucher baru</li>
+                                    <li>Gunakan perintah /list untuk melihat daftar voucher</li>
+                                    <li>Gunakan perintah /status untuk melihat status koneksi MikroTik</li>
+                                </ol>
+
+                                <h5>Troubleshooting Koneksi:</h5>
+                                <div class="accordion" id="troubleshootingAccordion">
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="headingMikroTik">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseMikroTik" aria-expanded="false" aria-controls="collapseMikroTik">
+                                                Masalah Koneksi MikroTik
+                                            </button>
+                                        </h2>
+                                        <div id="collapseMikroTik" class="accordion-collapse collapse" aria-labelledby="headingMikroTik" data-bs-parent="#troubleshootingAccordion">
+                                            <div class="accordion-body">
+                                                <p>Jika koneksi ke MikroTik gagal, periksa hal-hal berikut:</p>
+                                                <ol>
+                                                    <li>Pastikan API service aktif di MikroTik (IP → Services → API)</li>
+                                                    <li>Periksa firewall MikroTik, pastikan tidak memblokir port API</li>
+                                                    <li>Jika menggunakan SSL, pastikan API-SSL aktif dan port benar (biasanya 8729)</li>
+                                                    <li>Pastikan username dan password benar</li>
+                                                    <li>Coba matikan SSL verification jika menggunakan self-signed certificates</li>
+                                                </ol>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="accordion-item">
+                                        <h2 class="accordion-header" id="headingTelegram">
+                                            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapseTelegram" aria-expanded="false" aria-controls="collapseTelegram">
+                                                Masalah Koneksi Telegram
+                                            </button>
+                                        </h2>
+                                        <div id="collapseTelegram" class="accordion-collapse collapse" aria-labelledby="headingTelegram" data-bs-parent="#troubleshootingAccordion">
+                                            <div class="accordion-body">
+                                                <p>Jika koneksi ke Telegram gagal, periksa hal-hal berikut:</p>
+                                                <ol>
+                                                    <li>Pastikan token format benar: angka:string</li>
+                                                    <li>Pastikan Anda telah memulai bot dengan mengirim /start ke bot di Telegram</li>
+                                                    <li>Chat ID harus berupa angka (untuk user) atau dimulai dengan - untuk grup</li>
+                                                    <li>Pastikan bot memiliki izin mengirim pesan ke chat ID yang ditentukan</li>
+                                                </ol>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <h5 class="mt-3">Info Debugging:</h5>
+                                <div class="debug-info">
+                                    <p>File log tersedia di:</p>
+                                    <ul>
+                                        <li><code>app.log</code> - Log aplikasi web</li>
+                                        <li><code>telegram_bot.log</code> - Log bot Telegram</li>
+                                    </ul>
+                                    <p>Periksa file log jika mengalami masalah koneksi.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <footer class="mt-5 text-center">
+            <p>&copy; 2025 MIPY by Saputra Budi</p>
+        </footer>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            // Test MikroTik connection
+            $('#test-mikrotik').click(function() {
+                $('#mikrotik-result').html('<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>');
+                
+                $.ajax({
+                    url: '/test_mikrotik',
+                    type: 'POST',
+                    success: function(response) {
+                        if (response.success) {
+                            $('#mikrotik-result').html('<div class="alert alert-success">' + response.message + '</div>');
+                        } else {
+                            $('#mikrotik-result').html('<div class="alert alert-danger">' + response.message + '</div>');
+                        }
+                    },
+                    error: function() {
+                        $('#mikrotik-result').html('<div class="alert alert-danger">Terjadi kesalahan saat menghubungi server.</div>');
+                    }
+                });
+            });
+            
+            // Fungsi untuk memuat ulang data reseller dari server
+            function reloadResellerData() {
+                $.ajax({
+                    url: '/get_resellers',
+                    type: 'GET',
+                    success: function(data) {
+                        $('#resellerTableBody').empty();
+                        data.forEach(function(item) {
+                            addResellerRow(item.chat_id, item.name, item.balance, item.status);
+                        });
+                    },
+                    error: function() {
+                        console.error("Gagal memuat data reseller");
+                    }
+                });
+            }
+
+            // Reload data reseller saat tab Manajemen Reseller dibuka
+            $('a[data-bs-toggle="tab"][href="#reseller"]').on('shown.bs.tab', function(e) {
+                reloadResellerData();
+            });
+            
+            // Test Telegram connection
+            $('#test-telegram').click(function() {
+                $('#telegram-result').html('<div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>');
+                
+                $.ajax({
+                    url: '/test_telegram',
+                    type: 'POST',
+                    success: function(response) {
+                        if (response.success) {
+                            $('#telegram-result').html('<div class="alert alert-success">' + response.message + '</div>');
+                        } else {
+                            $('#telegram-result').html('<div class="alert alert-danger">' + response.message + '</div>');
+                        }
+                    },
+                    error: function() {
+                        $('#telegram-result').html('<div class="alert alert-danger">Terjadi kesalahan saat menghubungi server.</div>');
+                    }
+                });
+            });
+            
+            // Toggle token visibility
+            $('#toggle-token').click(function() {
+                var tokenInput = $('#TELEGRAM_TOKEN');
+                if (tokenInput.attr('type') === 'password') {
+                    tokenInput.attr('type', 'text');
+                    $(this).html('<i class="bi bi-eye-slash"></i> Sembunyikan');
+                } else {
+                    tokenInput.attr('type', 'password');
+                    $(this).html('<i class="bi bi-eye"></i> Tampilkan');
+                }
+            });
+
+            // Fungsi untuk menambah baris profil harga baru
+            function addProfilePriceRow(profile = '', price = '', duration = '', quota = '') {
+                const row = `
+                    <tr>
+                        <td>
+                            <input type="text" class="form-control" name="profile_names[]" value="${profile}" readonly>
+                        </td>
+                        <td>
+                            <input type="number" class="form-control" name="profile_prices[]" value="${price}" min="0" required>
+                        </td>
+                        <td>
+                            <input type="text" class="form-control" name="profile_durations[]" value="${duration}" 
+                                   placeholder="Contoh: 1h, 1d, 30d"
+                                   title="Format: 1h (1 jam), 1d (1 hari), 30d (30 hari)">
+                            <small class="form-text text-muted">1h=1jam, 1d=1hari, 30d=30hari</small>
+                        </td>
+                        <td>
+                            <input type="text" class="form-control" name="profile_quotas[]" value="${quota}"
+                                   placeholder="Contoh: 1G, 2G, none"
+                                   title="Format: 1G (1GB), 2G (2GB), none (tanpa batas)">
+                            <small class="form-text text-muted">1G=1GB, none=tanpa batas</small>
+                        </td>
+                    </tr>
+                `;
+                $('#profilePriceTableBody').append(row);
+            }
+
+            // Fungsi untuk menambah baris reseller baru
+            function addResellerRow(chatId = '', name = '', balance = '0', status = 'active') {
+                const row = `
+                    <tr>
+                        <td><input type="text" class="form-control" name="reseller_chat_ids[]" value="${chatId}" required></td>
+                        <td><input type="text" class="form-control" name="reseller_names[]" value="${name}" required></td>
+                        <td>
+                            <input type="number" class="form-control" name="reseller_balances[]" value="${balance}">
+                            <small class="form-text text-muted">Saldo juga dapat ditambah melalui Telegram dengan perintah /addsaldo</small>
+                        </td>
+                        <td>
+                            <select class="form-control" name="reseller_status[]">
+                                <option value="active" ${status === 'active' ? 'selected' : ''}>Aktif</option>
+                                <option value="inactive" ${status === 'inactive' ? 'selected' : ''}>Nonaktif</option>
+                            </select>
+                        </td>
+                    </tr>
+                `;
+                $('#resellerTableBody').append(row);
+            }
+
+            // Event handler untuk tombol tambah profil
+            $('#addProfilePrice').click(function() {
+                addProfilePriceRow();
+            });
+
+            // Event handler untuk tombol tambah reseller
+            $('#addReseller').click(function() {
+                addResellerRow();
+            });
+
+            // Event handler untuk tombol hapus
+            $(document).on('click', '.delete-row', function() {
+                $(this).closest('tr').remove();
+            });
+
+            // Load data profil dan harga saat halaman dimuat
+            function loadProfileData() {
+                $.get('/get_profile_prices', function(data) {
+                    $('#profilePriceTableBody').empty();
+                    data.forEach(function(item) {
+                        addProfilePriceRow(
+                            item.name, 
+                            item.price || 0, 
+                            item.duration || '', 
+                            item.quota || ''
+                        );
+                    });
+                });
+            }
+
+            // Load data saat halaman pertama kali dimuat
+            loadProfileData();
+
+            // Handler untuk tombol sinkronisasi
+            $('#syncMikrotik').click(function() {
+                const button = $(this);
+                const originalText = button.html();
+                button.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Sinkronisasi...');
+                button.prop('disabled', true);
+                
+                $.ajax({
+                    url: '/sync_mikrotik_profiles',
+                    type: 'POST',
+                    success: function(response) {
+                        if (response.success) {
+                            // Bersihkan tabel yang ada
+                            $('#profilePriceTableBody').empty();
+                            
+                            // Tambahkan data baru
+                            response.profiles.forEach(function(profile) {
+                                addProfilePriceRow(
+                                    profile.name, 
+                                    profile.price || 0, 
+                                    profile.duration || '', 
+                                    profile.quota || ''
+                                );
+                            });
+                            
+                            // Tampilkan pesan sukses
+                            const alert = $('<div class="alert alert-success alert-dismissible fade show" role="alert">')
+                                .text(response.message)
+                                .append('<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>');
+                            $('#profilePriceForm').prepend(alert);
+                        } else {
+                            // Tampilkan pesan error
+                            const alert = $('<div class="alert alert-danger alert-dismissible fade show" role="alert">')
+                                .text(response.message)
+                                .append('<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>');
+                            $('#profilePriceForm').prepend(alert);
+                        }
+                    },
+                    error: function() {
+                        const alert = $('<div class="alert alert-danger alert-dismissible fade show" role="alert">')
+                            .text('Terjadi kesalahan saat menghubungi server.')
+                            .append('<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>');
+                        $('#profilePriceForm').prepend(alert);
+                    },
+                    complete: function() {
+                        button.html(originalText);
+                        button.prop('disabled', false);
+                    }
+                });
+            });
+
+            // Event handler untuk form submission
+            $('#profilePriceForm').on('submit', function(e) {
+                e.preventDefault();
+                
+                // Validasi form
+                let isValid = true;
+                const profiles = [];
+                
+                // Validasi nama profil
+                $('input[name="profile_names[]"]').each(function() {
+                    const profile = $(this).val().trim();
+                    if (!profile) {
+                        isValid = false;
+                        $(this).addClass('is-invalid');
+                    } else if (profiles.includes(profile)) {
+                        isValid = false;
+                        $(this).addClass('is-invalid');
+                        alert('Nama profil tidak boleh sama: ' + profile);
+                    } else {
+                        profiles.push(profile);
+                        $(this).removeClass('is-invalid');
+                    }
+                });
+
+                // Validasi format durasi
+                $('input[name="profile_durations[]"]').each(function() {
+                    const duration = $(this).val().trim();
+                    if (duration && !duration.match(/^(\d+[hd]|none)$/)) {
+                        isValid = false;
+                        $(this).addClass('is-invalid');
+                        alert('Format durasi tidak valid. Gunakan format: angka+h atau angka+d (contoh: 1h, 1d, 30d)');
+                    } else {
+                        $(this).removeClass('is-invalid');
+                    }
+                });
+
+                // Validasi format kuota
+                $('input[name="profile_quotas[]"]').each(function() {
+                    const quota = $(this).val().trim();
+                    if (quota && !quota.match(/^(\d+[GMK]|none)$/i)) {
+                        isValid = false;
+                        $(this).addClass('is-invalid');
+                        alert('Format kuota tidak valid. Gunakan format: angka+G atau none (contoh: 1G, 2G, none)');
+                    } else {
+                        $(this).removeClass('is-invalid');
+                    }
+                });
+                
+                if (!isValid) {
+                    return false;
+                }
+                
+                // Submit form jika valid
+                const form = this;
+                const submitBtn = $(form).find('button[type="submit"]');
+                const originalText = submitBtn.html();
+                submitBtn.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Menyimpan...');
+                submitBtn.prop('disabled', true);
+
+                $.ajax({
+                    url: form.action,
+                    type: 'POST',
+                    data: $(form).serialize(),
+                    success: function(response) {
+                        // Reload data setelah simpan
+                        loadProfileData();
+                        
+                        // Tampilkan pesan sukses
+                        const alert = $('<div class="alert alert-success alert-dismissible fade show" role="alert">')
+                            .text('Konfigurasi harga profil berhasil disimpan!')
+                            .append('<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>');
+                        $('#profilePriceForm').prepend(alert);
+                    },
+                    error: function() {
+                        const alert = $('<div class="alert alert-danger alert-dismissible fade show" role="alert">')
+                            .text('Gagal menyimpan konfigurasi harga profil!')
+                            .append('<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>');
+                        $('#profilePriceForm').prepend(alert);
+                    },
+                    complete: function() {
+                        submitBtn.html(originalText);
+                        submitBtn.prop('disabled', false);
+                    }
+                });
+                
+                return false;
+            });
+
+            // Handler untuk tombol test koneksi reseller
+            $('#testResellerConnection').click(function() {
+                const button = $(this);
+                const originalText = button.html();
+                button.html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Menguji...');
+                button.prop('disabled', true);
+                
+                $.ajax({
+                    url: '/test_reseller_connection',
+                    type: 'POST',
+                    success: function(response) {
+                        if (response.success) {
+                            const alert = $('<div class="alert alert-success alert-dismissible fade show" role="alert">')
+                                .text(response.message)
+                                .append('<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>');
+                            $('#reseller-connection-result').html(alert);
+                        } else {
+                            const alert = $('<div class="alert alert-danger alert-dismissible fade show" role="alert">')
+                                .text(response.message)
+                                .append('<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>');
+                            $('#reseller-connection-result').html(alert);
+                        }
+                    },
+                    error: function() {
+                        const alert = $('<div class="alert alert-danger alert-dismissible fade show" role="alert">')
+                            .text('Terjadi kesalahan saat menghubungi server.')
+                            .append('<button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>');
+                        $('#reseller-connection-result').html(alert);
+                    },
+                    complete: function() {
+                        button.html(originalText);
+                        button.prop('disabled', false);
+                    }
+                });
+            });
+            
+            // Load data reseller saat halaman dimuat
+            reloadResellerData();
+        });
+    </script>
+</body>
+</html> 
